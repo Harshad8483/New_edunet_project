@@ -1,0 +1,83 @@
+Edunet_project — Interview Q&A (UI & Backend)
+
+Format: Questions grouped by difficulty (Easy / Moderate / Hard). Each question includes a concise answer and references to relevant files or concepts in the repo.
+
+---
+EASY — UI
+
+Q1: What frontend technologies does this project use?
+A1: React (Vite-based), Recharts for charts, framer-motion for small animations, lucide-react for icons, and utility CSS (Tailwind-like). See: `frontend/package.json`, `frontend/src` components.
+
+Q2: Where is the consumption chart implemented and how would you make its tooltip interactive on hover?
+A2: `frontend/src/components/UsageChart.jsx`. Use Recharts' `Tooltip` with `wrapperStyle={{pointerEvents:'auto'}}`, `cursor` set, and disable animations (e.g., `isAnimationActive={false}`) so the tooltip updates with cursor movement.
+
+Q3: How does the UI display the estimated bill and which file controls that?
+A3: `frontend/src/components/PredictionPanel.jsx` displays the bill in INR; it prefers `estimated_monthly_bill_inr` from `/api/predict` and falls back to `estimated_bill_inr`.
+
+---
+EASY — BACKEND
+
+Q1: What framework and main libraries are used on the backend?
+A1: FastAPI (uvicorn), pandas, numpy, scikit-learn (SGDRegressor, StandardScaler), and pickle for persistence. See `backend/main.py` and `backend/requirements.txt`.
+
+Q2: What does the `/api/upload/validate` endpoint do?
+A2: Reads an uploaded CSV sample, detects delimiter/header, and returns a preview and suggested column mappings without saving file (implemented in `upload_validate` function in `backend/main.py`).
+
+Q3: How do you fetch basic consumption stats from the server?
+A3: `GET /api/stats` returns average, peak, last recorded, and total readings — based on in-memory `data_store` or a streaming summary of the CSV.
+
+---
+MODERATE — UI
+
+Q1: How would you add a hover overlay that shows exact Y-values as the user moves the cursor?
+A1: Add an `onMouseMove` handler to the chart (`AreaChart` or `BarChart`) that reads `state.activePayload` and sets local component state; render an absolute positioned overlay showing the `label` (date) and `value`. See `UsageChart.jsx` for example.
+
+Q2: How do you make charts handle very small numeric ranges so lines don't look flat?
+A2: Compute Y domain padding (e.g., expand min/max by 5-10% or set a minimum range) in the YAxis `domain` prop. This prevents visually flat lines for small variations.
+
+Q3: How do you ensure the Green Score label is visible and not clipped by the SVG gauge?
+A3: Use a larger `viewBox` on the SVG, avoid `overflow:hidden`, add an inner disc element for contrast, and place the short label under the circle (see `PredictionPanel.jsx`).
+
+---
+MODERATE — BACKEND
+
+Q1: Explain the incremental training approach used and why it's necessary.
+A1: `train_model_from_path` reads the CSV in chunks and uses `StandardScaler.partial_fit` with `SGDRegressor.partial_fit`. This avoids loading large CSVs entirely into memory, making training scalable and resumable.
+
+Q2: How does the backend detect headerless CSVs and map columns?
+A2: The upload routine samples the file, uses `csv.Sniffer` heuristics and checks whether column names are parseable values; it then uses a mapping table and heuristics (e.g., numeric dtype fallback) to map a usage-like column to `usage`.
+
+Q3: How is training performed without blocking the upload endpoint?
+A3: Upload schedules `_background_retrain_from_disk` in a daemon thread (non-blocking). Training updates `training_state` with progress and metrics; status is exposed via `GET /api/train/status`.
+
+---
+HARD — UI
+
+Q1: The tooltip must display interpolated Y values (not just nearest point) and show a pinned Y-axis value. How would you implement it?
+A1: Use `onMouseMove` to compute the x position, then linearly interpolate between the two nearest points for the Y value. For a pinned Y-axis label, render the value aligned to the chart's Y axis position (compute pixel coordinate using chart scale or container height and domain mapping). Ensure accessibility by exposing the same info in a keyboard-focus state.
+
+Q2: How would you add automated UI tests that assert chart tooltips and the prediction panel update after a CSV upload?
+A2: Use Playwright or Cypress to upload a sample CSV to `/api/upload` or via UI file input, wait for `fetchData()` (or poll `/api/train/status`), then assert the DOM shows expected tooltips and that the `PredictionPanel` displays `estimated_monthly_bill_inr` and `green_score` with expected formatted values.
+
+Q3: How to support very small screens so the gauge and numeric labels remain readable?
+A3: Use responsive SVG `viewBox` scaling, reduce stroke widths, shorten labels, and hide secondary text at very small breakpoints. Test with device emulation and tune sizes in `PredictionPanel.jsx`.
+
+---
+HARD — BACKEND
+
+Q1: The monthly bill is unstable across datasets and sometimes too small. Explain the robust approach used here and how you'd improve it further.
+A1: Current approach: infer sampling interval (median time diff), compute predicted monthly kWh, compute historical monthly kWh, and blend them using a weight derived from `r2` (model confidence). Improvements: incorporate prediction uncertainty (e.g., cross-validated error / sigma) and provide a tunable lower bound or domain-aware prior (seasonality, tariff schedules). Also expose blend components via `/api/predict` for transparency.
+
+Q2: How does the trainer persist preprocessing so future predictions align with training?
+A2: The trainer saves a dict with `model`, `scaler`, and `features` into `electricity_model.pkl`. The prediction code loads the scaler and feature order to transform inputs consistently before `predict`.
+
+Q3: How do you avoid corrupt CSVs or injections when streaming uploads and rewriting normalized CSVs to disk?
+A3: The upload handler reads a small sample first, uses `on_bad_lines='skip'` for pandas, tries multiple encodings, and rewrites with normalized column names and `to_csv` safely. Remove file if validation fails. Additionally, we avoid executing any arbitrary file contents and treat all parsing exceptions gracefully.
+
+---
+Quick test checklist (practical questions):
+- curl http://localhost:8000/api/trends — returns last 30 records (dates formatted). 
+- curl http://localhost:8000/api/predict — returns `predicted_usage`, `estimated_monthly_bill_inr`, and `green_score`.
+- Upload a headerless CSV and confirm `POST /api/upload/validate` returns suggested mappings and preview.
+
+Good luck preparing — review `frontend/src/components/UsageChart.jsx`, `PredictionPanel.jsx`, and `backend/main.py` for specifics and examples.

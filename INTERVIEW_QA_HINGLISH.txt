@@ -1,0 +1,83 @@
+Edunet_project — Interview Q&A (UI & Backend) — Hinglish
+
+Format: Questions grouped by difficulty (Easy / Moderate / Hard). Answers are written in simple Hinglish (mix of Hindi and English) for easier understanding.
+
+---
+EASY — UI
+
+Q1: Frontend me kaunse technologies use kiye gaye hain?
+A1: React (Vite), charts ke liye Recharts, framer-motion animations ke liye, icons ke liye lucide-react aur utility CSS (Tailwind-like). Files dekho: `frontend/package.json`, `frontend/src`.
+
+Q2: Consumption chart kahaan hai aur tooltip ko interactive kaise banayenge?
+A2: `frontend/src/components/UsageChart.jsx`. Recharts `Tooltip` me `wrapperStyle={{pointerEvents:'auto'}}`, `cursor` set karo aur animations ko disable (`isAnimationActive={false}`) taaki cursor ke saath tooltip live update kare.
+
+Q3: Est. Bill (INR) kahan show hoti hai?
+A3: `frontend/src/components/PredictionPanel.jsx` me. Backend se `estimated_monthly_bill_inr` prefer karta hai; agar wo nahi hai to per-reading value dikhata hai.
+
+---
+EASY — BACKEND
+
+Q1: Backend ka stack kya hai?
+A1: FastAPI, pandas, numpy, scikit-learn (SGDRegressor, StandardScaler), aur pickle for saving model. Dekho: `backend/main.py`.
+
+Q2: `/api/upload/validate` kya karta hai?
+A2: CSV ka chota sample parse karke delimiter aur header detect karta hai aur preview + suggested column mapping return karta hai — file save nahi hoti.
+
+Q3: Basic stats kaise milenge?
+A3: `GET /api/stats` se average, peak, last recorded and total readings milenge (in-memory preview ya streaming summary). 
+
+---
+MODERATE — UI
+
+Q1: Cursor ke position par exact Y-value overlay kaise add karenge?
+A1: Chart me `onMouseMove` add karo, `state.activePayload` read karo aur component state me set karo; ek absolute div render karo jisme current date aur value dikhayein.
+
+Q2: Small numeric range me chart ko flat na dikhane ka tareeqa?
+A2: Y axis domain me padding add karo (min/max +/- 5-10%) ya minimum visible range set karo.
+
+Q3: Green Score label clip na ho — fix kaise karein?
+A3: SVG me bada `viewBox` use karo, overflow visible rakho, aur label ko circle ke neeche place karo (see `PredictionPanel.jsx`).
+
+---
+MODERATE — BACKEND
+
+Q1: Incremental training kyu use karte hain?
+A1: `train_model_from_path` chunks me CSV read karta hai aur `StandardScaler.partial_fit` + `SGDRegressor.partial_fit` se memory efficient training hota hai — large files ko handle karne ke liye zaroori.
+
+Q2: Headerless CSV detect kaise hota hai?
+A2: Sample check me dekhte hain agar column names parseable values hai; agar headerless lagta hai to second column ko usage assume karte hain ya numeric column choose karte hain.
+
+Q3: Upload ke baad training background me kaise run hoti hai?
+A3: `_background_retrain_from_disk` ko daemon thread me schedule karte hain; `training_state` me progress update hota hai; status via `/api/train/status` milta hai.
+
+---
+HARD — UI
+
+Q1: Interpolated Y values aur pinned Y-axis label add karna ho to kya karoge?
+A1: `onMouseMove` se cursor X pixel leke nearest two points find karo, linear interpolation karo, aur axis pe pixel->value mapping karke pinned label show karo. Accessibility me keyboard focus state bhi add karo.
+
+Q2: Automated UI tests (tooltip & prediction update) kaise likhoge?
+A2: Playwright/Cypress se file upload simulate karo, wait for dataset preview or `/api/train/status`, then DOM assertions karo: tooltip value, `PredictionPanel` ki monthly bill and `green_score`.
+
+Q3: Mobile me gauge readable kaise banega?
+A3: responsive `viewBox`, stroke widths reduce karo, short label text use karo, aur small-breakpoint pe secondary text hide karo.
+
+---
+HARD — BACKEND
+
+Q1: Monthly bill bohot chota aa raha tha — robust fix kya hai?
+A1: Median sampling interval infer karke predicted monthly kWh nikalte hain; phir historical monthly kWh nikalke dono ko blend karte hain using model `r2` as weight. Yeh low predictions ko realistic banata hai. Further improvement: prediction uncertainty use karna, seasonality consider karna, ya transparency ke liye blend components API me return karna.
+
+Q2: Preprocessing ko persist kaise karte ho taaki future predictions match karein?
+A2: `electricity_model.pkl` me dict save hota hai: `{'model', 'scaler', 'features'}`. Prediction side pe same `scaler` and `feature` order use karke transform karte hain.
+
+Q3: Uploaded CSV corrupt ya malicious content se kaise bachenge?
+A3: Sample-based parsing, `on_bad_lines='skip'`, multiple encoding fallbacks, headerless heuristics and remove file on validation failure — aise safe guards rakhe hain.
+
+---
+Test checklist (practical):
+- curl http://localhost:8000/api/trends — last records list.
+- curl http://localhost:8000/api/predict — `estimated_monthly_bill_inr` aur `green_score` check karo.
+- `POST /api/upload/validate` se suggested columns aur preview verify karo.
+
+Best of luck! Agar chaho, main in Q/A ko flashcards ya printable format me bhi de dunga.
